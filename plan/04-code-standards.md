@@ -14,7 +14,8 @@
 | **Docs** | `cargo doc --no-deps` |
 | **Dependencies** | Must appear in [`09-dependencies.md`](09-dependencies.md) |
 
-> **Do not use `serde_yaml`.** It is deprecated upstream. Use `serde_yaml_ng`.
+> **Do not use `serde_yaml`.** It is deprecated upstream, and it pulls in the archived
+> `unsafe-libyaml`. Use `serde-saphyr` — pure Rust, no `unsafe`, and it denies duplicate keys.
 > **Do not use `trust-dns-server`.** The crate was renamed to `hickory-server`; the old name is
 > stuck on an unmaintained 0.23 line.
 > **Do not use raw `netlink-packet-route`** for address management. Use `rtnetlink`.
@@ -169,7 +170,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error("failed to parse config: {0}")]
-    ParseError(#[from] serde_yaml::Error),
+    ParseError(#[from] Box<serde_saphyr::Error>),
     #[error("invalid weight: node '{node}' weight {weight} must be 0-100")]
     InvalidWeight { node: String, weight: u32 },
     #[error("weights do not sum to 100: node '{node}' sum is {sum}")]
@@ -183,7 +184,7 @@ async fn load_config(path: &str) -> Result<TenantConfig> {
     let content = tokio::fs::read_to_string(path)
         .await
         .context(format!("failed to read config file: {}", path))?;
-    let config: TenantConfig = serde_yaml::from_str(&content)
+    let config: TenantConfig = serde_saphyr::from_str(&content)
         .context("failed to parse config YAML")?;
     validate_config(&config)?;
     Ok(config)

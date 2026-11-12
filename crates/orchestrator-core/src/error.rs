@@ -111,9 +111,9 @@ pub enum ConfigError {
     Parse {
         /// The path that failed to parse.
         path: String,
-        /// The underlying YAML error.
+        /// The underlying YAML error. Boxed — the error type is large.
         #[source]
-        source: serde_yaml_ng::Error,
+        source: Box<serde_saphyr::Error>,
     },
 
     /// The config parsed but failed validation.
@@ -250,5 +250,68 @@ mod tests {
         b.push("b", "second");
         a.extend(b);
         assert_eq!(a.len(), 2);
+    }
+
+    #[test]
+    fn a_single_issue_is_rendered_in_the_singular() {
+        let mut errors = ValidationErrors::new();
+        errors.push("a", "first");
+        assert!(errors.to_string().contains("1 validation error:"));
+    }
+
+    #[test]
+    fn the_other_errors_render() {
+        let io = ConfigError::Io {
+            path: "/tmp/tenant.yaml".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "missing"),
+        };
+        assert!(io.to_string().contains("/tmp/tenant.yaml"));
+
+        let version = ConfigError::UnsupportedVersion {
+            found: 9,
+            supported: 1,
+        };
+        assert!(version.to_string().contains('9'));
+        assert!(version.to_string().contains("newer"));
+
+        let limit = ConfigError::LimitExceeded {
+            what: "routes".to_string(),
+            count: 2_000,
+            max: 1_000,
+        };
+        assert!(limit.to_string().contains("routes"));
+
+        let rollout = RolloutError::AlreadyRunning {
+            route: "api".to_string(),
+        };
+        assert!(rollout.to_string().contains("api"));
+
+        let rollout = RolloutError::NotFound {
+            route: "api".to_string(),
+        };
+        assert!(rollout.to_string().contains("api"));
+
+        let rollout = RolloutError::InvalidTransition {
+            action: "advance".to_string(),
+            state: "completed".to_string(),
+        };
+        assert!(rollout.to_string().contains("advance"));
+
+        let rollout = RolloutError::InvalidConfig("bad steps".to_string());
+        assert!(rollout.to_string().contains("bad steps"));
+
+        let vip = VipError::UnsupportedPlatform;
+        assert!(vip.to_string().contains("Linux"));
+
+        let vip = VipError::InterfaceNotFound {
+            interface: "eth9".to_string(),
+        };
+        assert!(vip.to_string().contains("eth9"));
+
+        let vip = VipError::AlreadyPresent {
+            address: "10.0.0.100/32".to_string(),
+            interface: "eth0".to_string(),
+        };
+        assert!(vip.to_string().contains("10.0.0.100/32"));
     }
 }

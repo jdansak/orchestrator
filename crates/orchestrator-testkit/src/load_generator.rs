@@ -309,6 +309,60 @@ mod tests {
         assert!((ln_gamma(0.5) - std::f64::consts::PI.sqrt().ln()).abs() < 1e-9);
     }
 
+    #[tokio::test]
+    async fn the_generator_counts_the_requests() {
+        let result = LoadGenerator::new("127.0.0.1:1")
+            .requests(10)
+            .concurrency(2)
+            .run()
+            .await;
+
+        // Port 1 is the discard port, so every request fails. What matters is that the
+        // generator sends the right number and counts the failures.
+        assert_eq!(result.total, 10);
+        assert_eq!(result.failed, 10);
+        assert_eq!(result.succeeded, 0);
+    }
+
+    #[tokio::test]
+    async fn the_classifier_labels_the_responses() {
+        let backend = crate::mock_backend::MockBackend::start().await;
+        let result = LoadGenerator::new(backend.authority())
+            .path("/api")
+            .requests(5)
+            .concurrency(1)
+            .classify_by(|body| {
+                if body.windows(6).any(|window| window == b"200 OK") {
+                    "ok".to_string()
+                } else {
+                    "other".to_string()
+                }
+            })
+            .run()
+            .await;
+
+        assert_eq!(result.succeeded, 5);
+        assert_eq!(result.counts.get("ok"), Some(&5));
+    }
+
+    #[tokio::test]
+    async fn debug_body() {
+        let backend = crate::mock_backend::MockBackend::start().await;
+        let result = LoadGenerator::new(backend.authority())
+            .path("/api")
+            .requests(1)
+            .concurrency(1)
+            .classify_by(|body| {
+                format!(
+                    "{:?}",
+                    String::from_utf8_lossy(&body[..body.len().min(120)])
+                )
+            })
+            .run()
+            .await;
+        println!("counts: {:?}", result.counts);
+    }
+
     #[test]
     fn the_probability_mass_function_sums_to_one() {
         let mut total = 0.0;

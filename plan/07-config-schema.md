@@ -10,8 +10,8 @@ document must appear here. Anything not listed here is rejected by the validator
 
 | Rule | Value |
 |------|-------|
-| Format | YAML 1.2, parsed with `serde_yaml_ng` |
-| Root document | Single mapping (no multi-doc) |
+| Format | YAML 1.2, parsed with `serde-saphyr` (pure Rust) |
+| Root document | Single mapping (no multi-doc). Duplicate keys are rejected |
 | Unknown fields | **Rejected** (`deny_unknown_fields`) — typos fail loudly instead of silently doing nothing |
 | `version` field | **Required**, integer, currently `1` |
 | Duration strings | `s`, `m`, `h` suffixes — `30s`, `5m`, `1h`. Bare integers are rejected |

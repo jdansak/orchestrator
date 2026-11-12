@@ -10,6 +10,14 @@ authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[lib]
+name = "orchestrator"
+path = "src/lib.rs"
+
+[[bin]]
+name = "orchestrator"
+path = "src/main.rs"
+
 [dependencies]
 orchestrator-core = { workspace = true }
 orchestrator-proto = { workspace = true }

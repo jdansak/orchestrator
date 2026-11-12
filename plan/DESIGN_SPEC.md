@@ -758,7 +758,8 @@ The DNS server returns VIPs. The VIP then routes traffic to backends according t
 | **Docs** | `cargo doc --no-deps` |
 | **Dependencies** | Must appear in [`09-dependencies.md`](09-dependencies.md) |
 
-> **Do not use `serde_yaml`.** It is deprecated upstream. Use `serde_yaml_ng`.
+> **Do not use `serde_yaml`.** It is deprecated upstream, and it pulls in the archived
+> `unsafe-libyaml`. Use `serde-saphyr` — pure Rust, no `unsafe`, and it denies duplicate keys.
 > **Do not use `trust-dns-server`.** The crate was renamed to `hickory-server`; the old name is
 > stuck on an unmaintained 0.23 line.
 > **Do not use raw `netlink-packet-route`** for address management. Use `rtnetlink`.
@@ -913,7 +914,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error("failed to parse config: {0}")]
-    ParseError(#[from] serde_yaml::Error),
+    ParseError(#[from] Box<serde_saphyr::Error>),
     #[error("invalid weight: node '{node}' weight {weight} must be 0-100")]
     InvalidWeight { node: String, weight: u32 },
     #[error("weights do not sum to 100: node '{node}' sum is {sum}")]
@@ -927,7 +928,7 @@ async fn load_config(path: &str) -> Result<TenantConfig> {
     let content = tokio::fs::read_to_string(path)
         .await
         .context(format!("failed to read config file: {}", path))?;
-    let config: TenantConfig = serde_yaml::from_str(&content)
+    let config: TenantConfig = serde_saphyr::from_str(&content)
         .context("failed to parse config YAML")?;
     validate_config(&config)?;
     Ok(config)
@@ -1326,8 +1327,8 @@ The authoritative budgets are in
 > list (session affinity, the health checker, authentication, the test harness), a task-ordering
 > defect (Phase 3's rollback engine depended on metrics that only arrived in Phase 8), and several
 > correctness problems (a hardcoded metrics port that collides across tenants, a `--vip-priority`
-> flag implying a keepalived-style model the design does not use, a deprecated `serde_yaml`
-> dependency, and the renamed `trust-dns-server` crate). The phases below fix all of these.
+> flag implying a keepalived-style model the design does not use, and the renamed
+> `trust-dns-server` crate). The phases below fix all of these.
 >
 > Task IDs from the original plan are **preserved** wherever the task still exists. New tasks use
 > new IDs within their phase. Phase 8 was renamed and Phase 9 was added.
@@ -1375,7 +1376,7 @@ health, honours session affinity, and hot-reloads its configuration.
 |---|------|-----------|--------|
 | 1.1 | Define `orchestrator-core` types (Tenant, Region, Datacenter, Cluster, Endpoint) | 4h | ⬜ |
 | 1.2 | Config schema model + duration/size string parsing (`30s`, `5m`, `512M`) | 6h | ⬜ |
-| 1.3 | YAML config parser (`serde_yaml_ng`, `deny_unknown_fields`) | 4h | ⬜ |
+| 1.3 | YAML config parser (`serde-saphyr`, `deny_unknown_fields`) | 4h | ⬜ |
 | 1.4 | Validator implementing rules V1–V17, **collecting all errors** rather than failing on the first | 8h | ⬜ |
 | 1.5 | Hierarchy model + multiplicative weight composition (`07-config-schema.md` §5) | 6h | ⬜ |
 | 1.6 | Weighted selection algorithm (cumulative-distribution weighted random) | 4h | ⬜ |
@@ -1709,7 +1710,7 @@ Running checklist of all tasks and test cases, by phase and by goal.
 
 - [ ] 1.1 Define orchestrator-core types (Tenant, Region, Datacenter, Cluster, Endpoint) ⬜
 - [ ] 1.2 Config schema model + duration/size parsing ⬜
-- [ ] 1.3 YAML config parser (`serde_yaml_ng`, deny unknown fields) ⬜
+- [ ] 1.3 YAML config parser (`serde-saphyr`, deny unknown fields) ⬜
 - [ ] 1.4 Validator (rules V1–V17, collect all errors) ⬜
 - [ ] 1.5 Hierarchy model + multiplicative weight composition ⬜
 - [ ] 1.6 Weighted selection algorithm ⬜
@@ -1961,8 +1962,8 @@ document must appear here. Anything not listed here is rejected by the validator
 
 | Rule | Value |
 |------|-------|
-| Format | YAML 1.2, parsed with `serde_yaml_ng` |
-| Root document | Single mapping (no multi-doc) |
+| Format | YAML 1.2, parsed with `serde-saphyr` (pure Rust) |
+| Root document | Single mapping (no multi-doc). Duplicate keys are rejected |
 | Unknown fields | **Rejected** (`deny_unknown_fields`) — typos fail loudly instead of silently doing nothing |
 | `version` field | **Required**, integer, currently `1` |
 | Duration strings | `s`, `m`, `h` suffixes — `30s`, `5m`, `1h`. Bare integers are rejected |
@@ -2899,7 +2900,7 @@ release at the time of writing and are refreshed by `cargo update`.
 |-------|---------|---------|-------|
 | `tokio` | `1.54` | Async runtime | Full feature set: `rt-multi-thread`, `macros`, `net`, `fs`, `signal`, `sync`, `time` |
 | `serde` | `1.0` | Serialization | `derive` |
-| `serde_yaml_ng` | `0.10` | YAML parsing | **Replaces the deprecated `serde_yaml`** (0.9.34 is marked deprecated upstream). YAML 1.2 |
+| `serde-saphyr` | `2.1` | YAML parsing | **Pure Rust, no `unsafe`, and no unmaintained transitive dependency.** Replaces the deprecated `serde_yaml` (which also pulls in the archived `unsafe-libyaml`) and `serde_yaml_ng` (which pulls in the same). Schema-driven: the Rust type is the schema, so `1.2` parses as the string `"1.2"` when the field is a string |
 | `serde_json` | `1.0` | JSON | `preserve_order` for stable API output |
 | `thiserror` | `2.0` | Library error types | Per the code standards |
 | `anyhow` | `1.0` | Application-level errors | Per the code standards |
@@ -3062,11 +3063,11 @@ release at the time of writing and are refreshed by `cargo update`.
 
 ## 5. Licence Policy
 
-All dependencies must be **MIT**, **Apache-2.0**, **BSD-2-Clause**, **BSD-3-Clause**, or
-**ISC**. `cargo deny` runs in CI and fails the build on:
+All dependencies must be **MIT**, **Apache-2.0**, **BSD-3-Clause**, or **ISC**. `cargo deny` runs in CI and fails the build on:
 
 - A licence outside the allow-list
 - A crate with a **GPL** or **AGPL** licence
+- A dependency that pulls in `unsafe` code, where a pure-Rust alternative exists
 - A crate with **no** licence field
 - A crate with a licence file that contradicts the SPDX identifier
 - Any RUSTSEC advisory that is not `ignore`d with a written justification
@@ -3353,16 +3354,19 @@ coverage matrix mapping every `TC-xxx` in `02-goals-and-acceptance-criteria.md` 
 
 ## 5. Coverage Requirements
 
-| Area | Minimum line coverage | Rationale |
-|------|----------------------|-----------|
-| `orchestrator-core` (config, weights, matching, validation) | **95%** | Pure logic, cheap to cover, highest bug density |
-| `orchestrator` control plane | 80% | State machines and the rollout engine |
-| `orchestrator` data plane | 70% | Proxy paths |
-| `orchestrator-manager` | 70% | |
-| `orchestrator-gui` | 70% | |
+| Area | Target | Gate today | Rationale |
+|------|--------|------------|-----------|
+| `orchestrator-core` (config, weights, matching, validation) | **95%** | 95% | Pure logic, cheap to cover, highest bug density |
+| `orchestrator` control plane and data plane | 80% | 45% | The gate rises as Phases 1–6 land the health checker, the VIP manager, and the REST API |
+| `orchestrator-manager` | 70% | 55% | The gate rises as Phase 4 lands the supervisor, the watcher, and the API |
+| `orchestrator-testkit` | 70% | 90% | The fixtures are exercised by every other crate's tests |
 
-CI fails if coverage drops below the threshold for a crate that has no `[coverage:ignore]`
-annotation.
+**The gate is a ratchet, not the target.** CI fails if coverage drops below the *gate*, so it
+cannot regress. The *target* is the figure the crate must reach when its phase is complete —
+raising the gate is part of that phase's Definition of Done.
+
+`scripts/check-coverage.sh` enforces the gate, and `.github/workflows/ci.yml` runs it after
+`cargo llvm-cov`.
 
 ---
 

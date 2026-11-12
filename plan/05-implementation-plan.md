@@ -5,8 +5,8 @@
 > list (session affinity, the health checker, authentication, the test harness), a task-ordering
 > defect (Phase 3's rollback engine depended on metrics that only arrived in Phase 8), and several
 > correctness problems (a hardcoded metrics port that collides across tenants, a `--vip-priority`
-> flag implying a keepalived-style model the design does not use, a deprecated `serde_yaml`
-> dependency, and the renamed `trust-dns-server` crate). The phases below fix all of these.
+> flag implying a keepalived-style model the design does not use, and the renamed
+> `trust-dns-server` crate). The phases below fix all of these.
 >
 > Task IDs from the original plan are **preserved** wherever the task still exists. New tasks use
 > new IDs within their phase. Phase 8 was renamed and Phase 9 was added.
@@ -54,7 +54,7 @@ health, honours session affinity, and hot-reloads its configuration.
 |---|------|-----------|--------|
 | 1.1 | Define `orchestrator-core` types (Tenant, Region, Datacenter, Cluster, Endpoint) | 4h | ⬜ |
 | 1.2 | Config schema model + duration/size string parsing (`30s`, `5m`, `512M`) | 6h | ⬜ |
-| 1.3 | YAML config parser (`serde_yaml_ng`, `deny_unknown_fields`) | 4h | ⬜ |
+| 1.3 | YAML config parser (`serde-saphyr`, `deny_unknown_fields`) | 4h | ⬜ |
 | 1.4 | Validator implementing rules V1–V17, **collecting all errors** rather than failing on the first | 8h | ⬜ |
 | 1.5 | Hierarchy model + multiplicative weight composition (`07-config-schema.md` §5) | 6h | ⬜ |
 | 1.6 | Weighted selection algorithm (cumulative-distribution weighted random) | 4h | ⬜ |

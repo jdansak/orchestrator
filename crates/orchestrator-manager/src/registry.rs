@@ -151,9 +151,9 @@ pub enum RegistryError {
     Parse {
         /// The path that failed to parse.
         path: String,
-        /// The underlying YAML error.
+        /// The underlying YAML error. Boxed — the error type is large.
         #[source]
-        source: serde_yaml_ng::Error,
+        source: Box<serde_saphyr::Error>,
     },
 
     /// Two workers on the same host bind the same port.
@@ -186,9 +186,9 @@ impl Registry {
             path: display.clone(),
             source,
         })?;
-        serde_yaml_ng::from_str(&contents).map_err(|source| RegistryError::Parse {
+        serde_saphyr::from_str(&contents).map_err(|source| RegistryError::Parse {
             path: display,
-            source,
+            source: Box::new(source),
         })
     }
 

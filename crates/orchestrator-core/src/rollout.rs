@@ -299,4 +299,91 @@ mod tests {
         rollout.step_elapsed = Duration::from_secs(300);
         assert!(rollout.should_auto_advance());
     }
+
+    #[test]
+    fn instant_mode_never_auto_advances() {
+        let mut cfg = config();
+        cfg.mode = RolloutMode::Instant;
+        let mut rollout = Rollout::start(cfg);
+        rollout.step_elapsed = Duration::from_secs(10_000);
+        assert!(!rollout.should_auto_advance());
+    }
+
+    #[test]
+    fn a_paused_rollout_does_not_auto_advance() {
+        let mut rollout = Rollout::start(config());
+        rollout.pause().unwrap();
+        rollout.step_elapsed = Duration::from_secs(10_000);
+        assert!(!rollout.should_auto_advance());
+    }
+
+    #[test]
+    fn the_final_step_does_not_auto_advance() {
+        let mut rollout = Rollout::start(config());
+        for _ in 0..4 {
+            rollout.advance().unwrap();
+        }
+        rollout.step_elapsed = Duration::from_secs(10_000);
+        assert!(!rollout.should_auto_advance());
+    }
+
+    #[test]
+    fn advancing_a_completed_rollout_fails() {
+        let mut rollout = Rollout::start(config());
+        rollout.promote().unwrap();
+        assert!(rollout.advance().is_err());
+    }
+
+    #[test]
+    fn rolling_back_an_idle_rollout_fails() {
+        let mut rollout = Rollout::start(config());
+        rollout.rollback().unwrap();
+        assert!(rollout.rollback().is_err());
+    }
+
+    #[test]
+    fn pausing_a_paused_rollout_fails() {
+        let mut rollout = Rollout::start(config());
+        rollout.pause().unwrap();
+        assert!(rollout.pause().is_err());
+    }
+
+    #[test]
+    fn resuming_a_running_rollout_fails() {
+        let mut rollout = Rollout::start(config());
+        assert!(rollout.resume().is_err());
+    }
+
+    #[test]
+    fn promoting_a_finished_rollout_fails() {
+        let mut rollout = Rollout::start(config());
+        rollout.promote().unwrap();
+        assert!(rollout.promote().is_err());
+    }
+
+    #[test]
+    fn a_rollout_that_has_not_finished_is_not_complete() {
+        let rollout = Rollout::start(config());
+        assert!(!rollout.is_complete());
+    }
+
+    #[test]
+    fn the_state_has_a_wire_name() {
+        assert_eq!(RolloutState::Idle.as_str(), "idle");
+        assert_eq!(RolloutState::InProgress.as_str(), "in_progress");
+        assert_eq!(RolloutState::Paused.as_str(), "paused");
+        assert_eq!(RolloutState::RollingBack.as_str(), "rolling_back");
+        assert_eq!(RolloutState::RolledBack.as_str(), "rolled_back");
+        assert_eq!(RolloutState::Completed.as_str(), "completed");
+        assert_eq!(RolloutState::Failed.as_str(), "failed");
+    }
+
+    #[test]
+    fn a_single_step_rollout_completes_immediately() {
+        let mut cfg = config();
+        cfg.steps = vec![0, 100];
+        let mut rollout = Rollout::start(cfg);
+        assert_eq!(rollout.advance().unwrap(), 100);
+        assert_eq!(rollout.state, RolloutState::Completed);
+    }
 }

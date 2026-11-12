@@ -22,10 +22,11 @@ keywords = ["load-balancer", "proxy", "dns", "networking", "traffic-management"]
 categories = ["network-programming", "command-line-utilities"]
 
 [workspace.dependencies]
-# Internal
-orchestrator-core = { path = "crates/orchestrator-core" }
-orchestrator-proto = { path = "crates/orchestrator-proto" }
-orchestrator-testkit = { path = "crates/orchestrator-testkit" }
+# Internal. The version is declared alongside the path so that `cargo deny` does not treat
+# these as wildcard dependencies.
+orchestrator-core = { path = "crates/orchestrator-core", version = "0.1.0" }
+orchestrator-proto = { path = "crates/orchestrator-proto", version = "0.1.0" }
+orchestrator-testkit = { path = "crates/orchestrator-testkit", version = "0.1.0" }
 
 # Runtime
 tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "signal", "sync", "time"] }
@@ -36,7 +37,7 @@ futures = "0.3"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
-serde_yaml_ng = "0.10"
+serde-saphyr = "2.1"
 serde_json = { version = "1.0", features = ["preserve_order"] }
 
 # Errors
@@ -150,6 +151,8 @@ duration_subsec = "allow"
 too_many_lines = "allow"
 needless_pass_by_value = "allow"
 struct_excessive_bools = "allow"
+# `Duration::from_days` is still unstable, so the lint cannot be satisfied in practice.
+duration_suboptimal_units = "allow"
 
 [profile.release]
 opt-level = 3

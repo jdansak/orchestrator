@@ -229,6 +229,58 @@ mod tests {
         assert_eq!(backend.hit_count(), 1);
     }
 
+    #[tokio::test]
+    async fn returns_the_configured_status() {
+        let backend = MockBackend::start_with(ResponseSpec {
+            status: 418,
+            latency: Duration::ZERO,
+            body: "teapot".to_string(),
+            fail_rate: 0.0,
+        })
+        .await;
+        assert_eq!(reqwest_get(&backend.authority()).await, 418);
+    }
+
+    #[tokio::test]
+    async fn a_killed_backend_returns_503() {
+        let backend = MockBackend::start().await;
+        backend.kill();
+        assert_eq!(reqwest_get(&backend.authority()).await, 503);
+
+        backend.revive();
+        assert_eq!(reqwest_get(&backend.authority()).await, 200);
+    }
+
+    #[tokio::test]
+    async fn a_failing_backend_returns_500() {
+        let backend = MockBackend::start().await;
+        backend.set_fail_rate(1.0);
+        assert_eq!(reqwest_get(&backend.authority()).await, 500);
+    }
+
+    #[tokio::test]
+    async fn a_slow_backend_still_answers() {
+        let backend = MockBackend::start().await;
+        backend.set_latency(Duration::from_millis(50));
+        assert_eq!(reqwest_get(&backend.authority()).await, 200);
+    }
+
+    #[tokio::test]
+    async fn reset_clears_the_recorded_requests() {
+        let backend = MockBackend::start().await;
+        let _ = reqwest_get(&backend.authority()).await;
+        assert_eq!(backend.hit_count(), 1);
+
+        backend.reset();
+        assert_eq!(backend.hit_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn the_authority_is_the_address() {
+        let backend = MockBackend::start().await;
+        assert_eq!(backend.authority(), backend.address().to_string());
+    }
+
     /// A minimal HTTP GET — avoids pulling in a full HTTP client for a smoke test.
     async fn reqwest_get(authority: &str) -> u16 {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};

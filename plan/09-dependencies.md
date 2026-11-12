@@ -16,7 +16,7 @@ release at the time of writing and are refreshed by `cargo update`.
 |-------|---------|---------|-------|
 | `tokio` | `1.54` | Async runtime | Full feature set: `rt-multi-thread`, `macros`, `net`, `fs`, `signal`, `sync`, `time` |
 | `serde` | `1.0` | Serialization | `derive` |
-| `serde_yaml_ng` | `0.10` | YAML parsing | **Replaces the deprecated `serde_yaml`** (0.9.34 is marked deprecated upstream). YAML 1.2 |
+| `serde-saphyr` | `2.1` | YAML parsing | **Pure Rust, no `unsafe`, and no unmaintained transitive dependency.** Replaces the deprecated `serde_yaml` (which also pulls in the archived `unsafe-libyaml`) and `serde_yaml_ng` (which pulls in the same). Schema-driven: the Rust type is the schema, so `1.2` parses as the string `"1.2"` when the field is a string |
 | `serde_json` | `1.0` | JSON | `preserve_order` for stable API output |
 | `thiserror` | `2.0` | Library error types | Per the code standards |
 | `anyhow` | `1.0` | Application-level errors | Per the code standards |
@@ -179,11 +179,11 @@ release at the time of writing and are refreshed by `cargo update`.
 
 ## 5. Licence Policy
 
-All dependencies must be **MIT**, **Apache-2.0**, **BSD-2-Clause**, **BSD-3-Clause**, or
-**ISC**. `cargo deny` runs in CI and fails the build on:
+All dependencies must be **MIT**, **Apache-2.0**, **BSD-3-Clause**, or **ISC**. `cargo deny` runs in CI and fails the build on:
 
 - A licence outside the allow-list
 - A crate with a **GPL** or **AGPL** licence
+- A dependency that pulls in `unsafe` code, where a pure-Rust alternative exists
 - A crate with **no** licence field
 - A crate with a licence file that contradicts the SPDX identifier
 - Any RUSTSEC advisory that is not `ignore`d with a written justification

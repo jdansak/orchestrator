@@ -264,16 +264,19 @@ coverage matrix mapping every `TC-xxx` in `02-goals-and-acceptance-criteria.md` 
 
 ## 5. Coverage Requirements
 
-| Area | Minimum line coverage | Rationale |
-|------|----------------------|-----------|
-| `orchestrator-core` (config, weights, matching, validation) | **95%** | Pure logic, cheap to cover, highest bug density |
-| `orchestrator` control plane | 80% | State machines and the rollout engine |
-| `orchestrator` data plane | 70% | Proxy paths |
-| `orchestrator-manager` | 70% | |
-| `orchestrator-gui` | 70% | |
+| Area | Target | Gate today | Rationale |
+|------|--------|------------|-----------|
+| `orchestrator-core` (config, weights, matching, validation) | **95%** | 95% | Pure logic, cheap to cover, highest bug density |
+| `orchestrator` control plane and data plane | 80% | 45% | The gate rises as Phases 1–6 land the health checker, the VIP manager, and the REST API |
+| `orchestrator-manager` | 70% | 55% | The gate rises as Phase 4 lands the supervisor, the watcher, and the API |
+| `orchestrator-testkit` | 70% | 90% | The fixtures are exercised by every other crate's tests |
 
-CI fails if coverage drops below the threshold for a crate that has no `[coverage:ignore]`
-annotation.
+**The gate is a ratchet, not the target.** CI fails if coverage drops below the *gate*, so it
+cannot regress. The *target* is the figure the crate must reach when its phase is complete —
+raising the gate is part of that phase's Definition of Done.
+
+`scripts/check-coverage.sh` enforces the gate, and `.github/workflows/ci.yml` runs it after
+`cargo llvm-cov`.
 
 ---
 

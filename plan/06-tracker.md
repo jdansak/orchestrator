@@ -35,7 +35,7 @@ Running checklist of all tasks and test cases, by phase and by goal.
 
 - [ ] 1.1 Define orchestrator-core types (Tenant, Region, Datacenter, Cluster, Endpoint) ⬜
 - [ ] 1.2 Config schema model + duration/size parsing ⬜
-- [ ] 1.3 YAML config parser (`serde_yaml_ng`, deny unknown fields) ⬜
+- [ ] 1.3 YAML config parser (`serde-saphyr`, deny unknown fields) ⬜
 - [ ] 1.4 Validator (rules V1–V17, collect all errors) ⬜
 - [ ] 1.5 Hierarchy model + multiplicative weight composition ⬜
 - [ ] 1.6 Weighted selection algorithm ⬜

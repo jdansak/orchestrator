@@ -1,24 +1,18 @@
-//! The Orchestrator per-tenant process.
+//! The per-tenant Orchestrator binary.
 //!
-//! Each tenant runs as its own process with its own configuration, VIP, listeners, and resource
-//! limits. A crash in one tenant cannot affect any other.
-
-mod cli;
-mod control_plane;
-mod data_plane;
-mod runtime;
+//! The logic lives in the library target so that it can be tested; this binary is the process
+//! wrapper around it.
 
 use std::net::SocketAddr;
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Parser;
+use orchestrator::cli::Cli;
+use orchestrator::control_plane::engine::ConfigEngine;
 use orchestrator_core::config::model::TenantConfig;
 use orchestrator_core::config::validate::validate;
 use tracing::{debug, error, info, warn};
-
-use crate::cli::Cli;
-use crate::control_plane::engine::ConfigEngine;
 
 /// The address the HTTP listener binds to when the config does not specify one.
 const DEFAULT_HTTP_BIND: &str = "0.0.0.0:8080";
@@ -54,23 +48,13 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         .log_level
         .clone()
         .unwrap_or_else(|| config.logging.level.clone());
-    runtime::init_tracing(&level, &config.logging.format);
+    orchestrator::runtime::init_tracing(&level, &config.logging.format);
 
     info!(
         tenant = %config.tenant.name,
         version = orchestrator_core::VERSION,
         "starting orchestrator"
     );
-
-    if cli.check {
-        let errors = validate(&config);
-        if errors.is_empty() {
-            info!("configuration is valid");
-            return Ok(());
-        }
-        error!("configuration is invalid:\n{errors}");
-        return Err(format!("configuration is invalid:\n{errors}").into());
-    }
 
     // Printing the routing table is a diagnostic, so it validates first — showing a table
     // built from an invalid config would be misleading.
@@ -80,14 +64,18 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("configuration is invalid:\n{errors}").into());
     }
 
+    if cli.check {
+        info!("configuration is valid");
+        return Ok(());
+    }
+
     let engine = Arc::new(ConfigEngine::new(config.clone()));
+    engine.log_summary();
 
     if cli.print_routes {
         print_routes(&engine);
         return Ok(());
     }
-
-    engine.log_summary();
 
     let bind = resolve_bind(&config, cli.http_bind.as_deref());
     let bind: SocketAddr = bind
@@ -95,7 +83,7 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|error| format!("invalid HTTP bind address '{bind}': {error}"))?;
 
     info!(%bind, "http listener starting");
-    serve(bind, engine.clone(), cli.clone()).await?;
+    serve(bind, engine.clone(), cli).await?;
 
     Ok(())
 }
@@ -152,7 +140,7 @@ async fn accept_loop(
     listener: tokio::net::TcpListener,
     engine: Arc<ConfigEngine>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let service = data_plane::http::ProxyService::new(engine.config());
+    let service = orchestrator::data_plane::http::ProxyService::new(engine.config());
 
     loop {
         let (stream, peer) = listener.accept().await?;
@@ -202,7 +190,10 @@ async fn watch_for_reload(
                 }
             }
             Err(error) => {
-                error!(%error, "failed to read the config, keeping the running configuration");
+                error!(
+                    %error,
+                    "failed to read the config, keeping the running configuration"
+                );
             }
         }
     }

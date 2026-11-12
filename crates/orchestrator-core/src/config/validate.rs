@@ -356,11 +356,10 @@ fn validate_rollout(config: &TenantConfig, errors: &mut ValidationErrors) {
 
 /// V15, and record-specific checks.
 fn validate_dns(config: &TenantConfig, errors: &mut ValidationErrors) {
-    if !config.dns.enabled {
-        return;
-    }
-
-    if config.dns.upstream.is_empty() {
+    // The upstream requirement only applies when the server actually runs. The records are
+    // validated either way — a typo in a record that is not enabled yet is still a typo, and
+    // the operator will want to know before they enable DNS.
+    if config.dns.enabled && config.dns.upstream.is_empty() {
         errors.push(
             "dns.upstream",
             "at least one upstream resolver is required when DNS is enabled",
@@ -456,10 +455,14 @@ fn validate_limits(config: &TenantConfig, errors: &mut ValidationErrors) {
 mod tests {
     use super::*;
     use crate::config::model::{
-        AffinityConfig, Cluster, Datacenter, Endpoint, HealthCheckConfig, Region, Route,
-        RouteMatch, RouteScope, UpstreamConfig, VipConfig,
+        AffinityConfig, AffinityMethod, AutoRollbackConfig, ClientAuth, Cluster, ConfigDuration,
+        Datacenter, DnsRecord, DnsRecordType, Endpoint, HealthCheckConfig, HttpsListener, Region,
+        RolloutConfig, RolloutMode, RolloutStrategy, RolloutTarget, Route, RouteMatch, RouteScope,
+        TlsConfig, TlsVersion, UpstreamConfig, VipConfig,
     };
     use std::net::SocketAddr;
+    use std::path::PathBuf;
+    use std::time::Duration;
 
     fn endpoint(name: &str, weight: u32) -> Endpoint {
         Endpoint {
@@ -607,5 +610,424 @@ mod tests {
             errors.len() >= 3,
             "expected at least 3 errors, got {errors}"
         );
+    }
+
+    // -- The tenant identity ------------------------------------------------
+
+    #[test]
+    fn the_tenant_name_must_not_be_empty() {
+        let mut cfg = config();
+        cfg.tenant.name = "  ".to_string();
+        assert!(validate(&cfg).to_string().contains("tenant.name"));
+    }
+
+    #[test]
+    fn the_zone_must_contain_a_dot() {
+        let mut cfg = config();
+        cfg.tenant.zone = "localhost".to_string();
+        assert!(validate(&cfg).to_string().contains("tenant.zone"));
+    }
+
+    // -- The VIP ------------------------------------------------------------
+
+    #[test]
+    fn the_interface_must_not_be_empty() {
+        let mut cfg = config();
+        cfg.vip.interface = String::new();
+        assert!(validate(&cfg).to_string().contains("vip.interface"));
+    }
+
+    #[test]
+    fn an_ipv6_vip_must_be_a_host_address() {
+        let mut cfg = config();
+        cfg.vip.address = "2001:db8::1/128".to_string();
+        assert!(validate(&cfg).is_empty(), "a /128 is a valid host address");
+
+        cfg.vip.address = "2001:db8::/64".to_string();
+        assert!(validate(&cfg).to_string().contains("host address"));
+    }
+
+    #[test]
+    fn the_vip_prefix_must_be_a_number() {
+        let mut cfg = config();
+        cfg.vip.address = "10.0.0.100/x".to_string();
+        assert!(validate(&cfg).to_string().contains("prefix length"));
+    }
+
+    // -- TLS ----------------------------------------------------------------
+
+    fn with_tls(tls: TlsConfig) -> TenantConfig {
+        let mut cfg = config();
+        cfg.listeners.https = Some(HttpsListener {
+            bind: "0.0.0.0:8443".parse().unwrap(),
+            tls,
+        });
+        cfg
+    }
+
+    fn tls_config() -> TlsConfig {
+        TlsConfig {
+            cert: PathBuf::from("/tmp/cert.pem"),
+            key: PathBuf::from("/tmp/key.pem"),
+            ca: None,
+            client_auth: ClientAuth::None,
+            min_version: TlsVersion::V1_2,
+            alpn: vec!["h2".to_string()],
+        }
+    }
+
+    #[test]
+    fn a_valid_tls_configuration_passes() {
+        let cfg = with_tls(tls_config());
+        assert!(validate(&cfg).is_empty());
+    }
+
+    #[test]
+    fn tls_1_3_is_accepted() {
+        let mut tls = tls_config();
+        tls.min_version = TlsVersion::V1_3;
+        let cfg = with_tls(tls);
+        assert!(validate(&cfg).is_empty());
+    }
+
+    #[test]
+    fn the_tls_certificate_and_key_are_required() {
+        let mut tls = tls_config();
+        tls.cert = PathBuf::new();
+        tls.key = PathBuf::new();
+        let cfg = with_tls(tls);
+        let errors = validate(&cfg).to_string();
+        assert!(errors.contains("tls.cert"));
+        assert!(errors.contains("tls.key"));
+    }
+
+    #[test]
+    fn client_authentication_needs_a_ca_bundle() {
+        let mut tls = tls_config();
+        tls.client_auth = ClientAuth::Required;
+        let cfg = with_tls(tls);
+        assert!(validate(&cfg).to_string().contains("tls.ca"));
+    }
+
+    #[test]
+    fn at_least_one_alpn_protocol_is_required() {
+        let mut tls = tls_config();
+        tls.alpn.clear();
+        let cfg = with_tls(tls);
+        assert!(validate(&cfg).to_string().contains("alpn"));
+    }
+
+    // -- The hierarchy ------------------------------------------------------
+
+    #[test]
+    fn an_empty_hierarchy_is_rejected() {
+        let mut cfg = config();
+        cfg.hierarchy.regions.clear();
+        assert!(validate(&cfg).to_string().contains("at least one region"));
+    }
+
+    #[test]
+    fn an_empty_datacenter_list_is_rejected() {
+        let mut cfg = config();
+        cfg.hierarchy.regions[0].datacenters.clear();
+        assert!(validate(&cfg)
+            .to_string()
+            .contains("at least one datacenter"));
+    }
+
+    #[test]
+    fn an_empty_cluster_list_is_rejected() {
+        let mut cfg = config();
+        cfg.hierarchy.regions[0].datacenters[0].clusters.clear();
+        assert!(validate(&cfg).to_string().contains("at least one cluster"));
+    }
+
+    #[test]
+    fn an_empty_endpoint_list_is_rejected() {
+        let mut cfg = config();
+        cfg.hierarchy.regions[0].datacenters[0].clusters[0]
+            .endpoints
+            .clear();
+        assert!(validate(&cfg).to_string().contains("at least one endpoint"));
+    }
+
+    // -- Session affinity ---------------------------------------------------
+
+    #[test]
+    fn a_header_affinity_requires_a_header_name() {
+        let mut cfg = config();
+        cfg.routes[0].affinity.method = AffinityMethod::Header;
+        assert!(validate(&cfg).to_string().contains("header_name"));
+    }
+
+    #[test]
+    fn a_zero_affinity_ttl_is_rejected() {
+        let mut cfg = config();
+        cfg.routes[0].affinity.ttl = ConfigDuration(Duration::ZERO);
+        assert!(validate(&cfg).to_string().contains("affinity.ttl"));
+    }
+
+    #[test]
+    fn client_ip_affinity_needs_no_extra_configuration() {
+        let mut cfg = config();
+        cfg.routes[0].affinity.method = AffinityMethod::ClientIp;
+        assert!(validate(&cfg).is_empty());
+    }
+
+    // -- The rollout --------------------------------------------------------
+
+    fn with_rollout(rollout: RolloutConfig) -> TenantConfig {
+        let mut cfg = config();
+        cfg.rollout = Some(rollout);
+        cfg
+    }
+
+    fn rollout_config() -> RolloutConfig {
+        RolloutConfig {
+            route: "api".to_string(),
+            strategy: RolloutStrategy::BlueGreen,
+            blue: RolloutTarget {
+                region: "us-east".to_string(),
+                datacenter: "dc-1".to_string(),
+                cluster: "prod".to_string(),
+            },
+            green: RolloutTarget {
+                region: "us-east".to_string(),
+                datacenter: "dc-1".to_string(),
+                cluster: "prod".to_string(),
+            },
+            steps: vec![0, 50, 100],
+            step_duration: ConfigDuration(Duration::from_secs(60)),
+            mode: RolloutMode::Gradual,
+            auto_rollback: AutoRollbackConfig::default(),
+            notify: None,
+        }
+    }
+
+    #[test]
+    fn a_valid_rollout_passes() {
+        let cfg = with_rollout(rollout_config());
+        assert!(validate(&cfg).is_empty());
+    }
+
+    #[test]
+    fn a_rollout_must_reference_an_existing_route() {
+        let mut rollout = rollout_config();
+        rollout.route = "nope".to_string();
+        let cfg = with_rollout(rollout);
+        assert!(validate(&cfg).to_string().contains("rollout.route"));
+    }
+
+    #[test]
+    fn a_rollout_must_reference_an_existing_region() {
+        let mut rollout = rollout_config();
+        rollout.green.region = "mars".to_string();
+        let cfg = with_rollout(rollout);
+        assert!(validate(&cfg).to_string().contains("rollout.green.region"));
+    }
+
+    #[test]
+    fn a_rollout_must_reference_an_existing_datacenter() {
+        let mut rollout = rollout_config();
+        rollout.green.datacenter = "dc-9".to_string();
+        let cfg = with_rollout(rollout);
+        assert!(validate(&cfg)
+            .to_string()
+            .contains("rollout.green.datacenter"));
+    }
+
+    #[test]
+    fn a_rollout_must_reference_an_existing_cluster() {
+        let mut rollout = rollout_config();
+        rollout.green.cluster = "staging".to_string();
+        let cfg = with_rollout(rollout);
+        assert!(validate(&cfg).to_string().contains("rollout.green.cluster"));
+    }
+
+    #[test]
+    fn the_rollout_steps_must_start_at_zero() {
+        let mut rollout = rollout_config();
+        rollout.steps = vec![10, 100];
+        let cfg = with_rollout(rollout);
+        assert!(validate(&cfg).to_string().contains("must start at 0"));
+    }
+
+    #[test]
+    fn the_rollout_steps_must_end_at_one_hundred() {
+        let mut rollout = rollout_config();
+        rollout.steps = vec![0, 50];
+        let cfg = with_rollout(rollout);
+        assert!(validate(&cfg).to_string().contains("must end at 100"));
+    }
+
+    #[test]
+    fn the_rollout_steps_must_increase() {
+        let mut rollout = rollout_config();
+        rollout.steps = vec![0, 50, 50, 100];
+        let cfg = with_rollout(rollout);
+        assert!(validate(&cfg).to_string().contains("increase strictly"));
+    }
+
+    #[test]
+    fn the_rollout_needs_at_least_one_step() {
+        let mut rollout = rollout_config();
+        rollout.steps.clear();
+        let cfg = with_rollout(rollout);
+        assert!(validate(&cfg).to_string().contains("at least one step"));
+    }
+
+    #[test]
+    fn the_error_rate_threshold_must_be_a_fraction() {
+        let mut rollout = rollout_config();
+        rollout.auto_rollback.error_rate_threshold = 5.0;
+        let cfg = with_rollout(rollout);
+        assert!(validate(&cfg).to_string().contains("error_rate_threshold"));
+    }
+
+    // -- The DNS records ----------------------------------------------------
+
+    fn dns_record(r#type: DnsRecordType, value: Option<&str>) -> DnsRecord {
+        DnsRecord {
+            name: "api".to_string(),
+            r#type,
+            value: value.map(ToString::to_string),
+            ttl: None,
+            priority: None,
+            weight: None,
+            port: None,
+            target: None,
+        }
+    }
+
+    #[test]
+    fn an_a_record_needs_a_valid_address() {
+        let mut cfg = config();
+        cfg.dns.records = vec![dns_record(DnsRecordType::A, Some("not-an-ip"))];
+        assert!(validate(&cfg)
+            .to_string()
+            .contains("not a valid IP address"));
+    }
+
+    #[test]
+    fn an_a_record_needs_a_value() {
+        let mut cfg = config();
+        cfg.dns.records = vec![dns_record(DnsRecordType::A, None)];
+        assert!(validate(&cfg)
+            .to_string()
+            .contains("required for an A record"));
+    }
+
+    #[test]
+    fn an_aaaa_record_needs_an_ipv6_address() {
+        let mut cfg = config();
+        cfg.dns.records = vec![dns_record(DnsRecordType::Aaaa, Some("10.0.0.1"))];
+        assert!(validate(&cfg).to_string().contains("not an IPv6 address"));
+    }
+
+    #[test]
+    fn an_aaaa_record_needs_a_value() {
+        let mut cfg = config();
+        cfg.dns.records = vec![dns_record(DnsRecordType::Aaaa, None)];
+        assert!(validate(&cfg)
+            .to_string()
+            .contains("required for an AAAA record"));
+    }
+
+    #[test]
+    fn a_cname_record_needs_a_target() {
+        let mut cfg = config();
+        cfg.dns.records = vec![dns_record(DnsRecordType::Cname, None)];
+        assert!(validate(&cfg)
+            .to_string()
+            .contains("required for a CNAME record"));
+    }
+
+    #[test]
+    fn an_srv_record_needs_a_target_and_a_port() {
+        let mut cfg = config();
+        cfg.dns.records = vec![DnsRecord {
+            name: "_http._api".to_string(),
+            r#type: DnsRecordType::Srv,
+            value: None,
+            ttl: None,
+            priority: Some(10),
+            weight: Some(10),
+            port: None,
+            target: None,
+        }];
+        let errors = validate(&cfg).to_string();
+        assert!(errors.contains("required for an SRV record"));
+    }
+
+    #[test]
+    fn a_valid_srv_record_passes() {
+        let mut cfg = config();
+        cfg.dns.records = vec![DnsRecord {
+            name: "_http._api".to_string(),
+            r#type: DnsRecordType::Srv,
+            value: None,
+            ttl: Some(30),
+            priority: Some(10),
+            weight: Some(10),
+            port: Some(443),
+            target: Some("api.app-frontend.internal".to_string()),
+        }];
+        assert!(validate(&cfg).is_empty());
+    }
+
+    // -- The limits ---------------------------------------------------------
+
+    #[test]
+    fn too_many_routes_are_rejected() {
+        let mut cfg = config();
+        cfg.routes = (0..=MAX_ROUTES)
+            .map(|index| Route {
+                name: format!("route-{index}"),
+                ..cfg.routes[0].clone()
+            })
+            .collect();
+        assert!(validate(&cfg).to_string().contains("exceeds the limit"));
+    }
+
+    #[test]
+    fn too_many_endpoints_are_rejected() {
+        let mut cfg = config();
+        cfg.hierarchy.regions[0].datacenters[0].clusters[0].endpoints = (0..=MAX_ENDPOINTS)
+            .map(|index| Endpoint {
+                name: format!("ep-{index}"),
+                weight: 100,
+                address: "10.1.1.5:8080".parse().unwrap(),
+            })
+            .collect();
+        assert!(validate(&cfg).to_string().contains("exceeds the limit"));
+    }
+
+    #[test]
+    fn too_many_dns_records_are_rejected() {
+        let mut cfg = config();
+        cfg.dns.records = (0..=MAX_DNS_RECORDS)
+            .map(|index| DnsRecord {
+                name: format!("record-{index}"),
+                r#type: DnsRecordType::A,
+                value: Some("10.0.0.100".to_string()),
+                ttl: None,
+                priority: None,
+                weight: None,
+                port: None,
+                target: None,
+            })
+            .collect();
+        assert!(validate(&cfg).to_string().contains("exceeds the limit"));
+    }
+
+    // -- The schema version -------------------------------------------------
+
+    #[test]
+    fn a_newer_schema_version_is_rejected() {
+        let mut cfg = config();
+        cfg.version = MAX_SCHEMA_VERSION + 1;
+        assert!(validate(&cfg)
+            .to_string()
+            .contains("newer than the supported"));
     }
 }

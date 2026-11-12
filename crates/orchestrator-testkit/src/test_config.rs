@@ -151,7 +151,7 @@ impl TestConfigBuilder {
 
     /// Builds the configuration and serialises it to YAML.
     pub fn to_yaml(&self) -> String {
-        serde_yaml_ng::to_string(&self.clone().build()).expect("the config is serialisable")
+        serde_saphyr::to_string(&self.clone().build()).expect("the config is serialisable")
     }
 }
 

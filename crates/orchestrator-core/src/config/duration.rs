@@ -42,6 +42,17 @@ impl fmt::Display for ParseSizeError {
 
 impl std::error::Error for ParseSizeError {}
 
+/// Multiplies a count by a unit factor, refusing to overflow.
+///
+/// Saturating arithmetic here would silently turn `18446744073709551615h` into a duration of
+/// 584 billion years. A config that says that is a mistake, and it should be reported as one.
+fn multiply(number: u64, factor: u64) -> Result<u64, ParseDurationError> {
+    number.checked_mul(factor).ok_or(ParseDurationError {
+        input: number.to_string(),
+        reason: format!("multiplying by {factor} overflows"),
+    })
+}
+
 /// Parses a duration string such as `30s`, `5m`, `1h30m`, or `500ms`.
 ///
 /// The result is a [`Duration`]. Components may appear in any order, but each unit may appear at
@@ -87,9 +98,9 @@ pub fn parse_duration(input: &str) -> Result<Duration, ParseDurationError> {
         let duration = match unit {
             "ms" => Duration::from_millis(number),
             "s" => Duration::from_secs(number),
-            "m" => Duration::from_secs(number.saturating_mul(60)),
-            "h" => Duration::from_secs(number.saturating_mul(3_600)),
-            "d" => Duration::from_secs(number.saturating_mul(86_400)),
+            "m" => Duration::from_secs(multiply(number, 60)?),
+            "h" => Duration::from_secs(multiply(number, 3_600)?),
+            "d" => Duration::from_secs(multiply(number, 86_400)?),
             "" => {
                 return Err(ParseDurationError {
                     input: input.to_string(),
@@ -182,10 +193,34 @@ pub mod serde_de {
     }
 }
 
+/// Formats a duration the way the config writer does: the largest unit that divides it
+/// exactly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DurationDisplay(pub Duration);
+
+impl fmt::Display for DurationDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let total = self.0.as_secs();
+        if total == 0 {
+            return write!(f, "{}ms", self.0.as_millis());
+        }
+        if total.is_multiple_of(86_400) {
+            return write!(f, "{}d", total / 86_400);
+        }
+        if total.is_multiple_of(3_600) {
+            return write!(f, "{}h", total / 3_600);
+        }
+        if total.is_multiple_of(60) {
+            return write!(f, "{}m", total / 60);
+        }
+        write!(f, "{total}s")
+    }
+}
+
 /// Serde helpers for serializing a [`Duration`] as a human-readable string.
 pub mod serde_ser {
+    use super::DurationDisplay;
     use serde::Serializer;
-    use std::fmt;
     use std::time::Duration;
 
     /// Serializes a duration as a string such as `"30s"`.
@@ -194,27 +229,6 @@ pub mod serde_ser {
         S: Serializer,
     {
         serializer.collect_str(&DurationDisplay(*value))
-    }
-
-    struct DurationDisplay(Duration);
-
-    impl fmt::Display for DurationDisplay {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            let total = self.0.as_secs();
-            if total == 0 {
-                return write!(f, "{}ms", self.0.as_millis());
-            }
-            if total.is_multiple_of(86_400) {
-                return write!(f, "{}d", total / 86_400);
-            }
-            if total.is_multiple_of(3_600) {
-                return write!(f, "{}h", total / 3_600);
-            }
-            if total.is_multiple_of(60) {
-                return write!(f, "{}m", total / 60);
-            }
-            write!(f, "{total}s")
-        }
     }
 }
 
@@ -227,6 +241,7 @@ pub mod serde_str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::model::ConfigDuration;
 
     #[test]
     fn parses_simple_durations() {
@@ -278,5 +293,62 @@ mod tests {
     #[test]
     fn rejects_unknown_size_units() {
         assert!(parse_size("512Z").is_err());
+    }
+
+    #[test]
+    fn rejects_an_empty_size() {
+        assert!(parse_size("").is_err());
+        assert!(parse_size("  ").is_err());
+    }
+
+    #[test]
+    fn rejects_a_size_that_overflows() {
+        assert!(parse_size(&format!("{}G", u64::MAX)).is_err());
+    }
+
+    #[test]
+    fn rejects_a_duration_that_overflows() {
+        // 18446744073709551615 hours is far beyond what a Duration can hold.
+        assert!(parse_duration("18446744073709551615h").is_err());
+    }
+
+    #[test]
+    fn rejects_a_number_with_no_digits() {
+        let error = parse_duration("s").unwrap_err();
+        assert!(error.reason.contains("expected a number"), "got: {error}");
+    }
+
+    #[test]
+    fn rejects_a_number_that_overflows_u64() {
+        assert!(parse_duration("99999999999999999999999s").is_err());
+    }
+
+    #[test]
+    fn a_duration_round_trips_through_serde() {
+        let duration = ConfigDuration(Duration::from_secs(90));
+        let yaml = serde_saphyr::to_string(&duration).expect("serialises");
+        assert!(yaml.contains("90s"), "got: {yaml}");
+
+        let parsed: ConfigDuration = serde_saphyr::from_str(&yaml).expect("deserialises");
+        assert_eq!(parsed, duration);
+    }
+
+    #[test]
+    fn durations_serialise_in_the_largest_readable_unit() {
+        assert_eq!(DurationDisplay(Duration::from_secs(30)).to_string(), "30s");
+        assert_eq!(DurationDisplay(Duration::from_secs(300)).to_string(), "5m");
+        assert_eq!(
+            DurationDisplay(Duration::from_secs(7_200)).to_string(),
+            "2h"
+        );
+        assert_eq!(
+            DurationDisplay(Duration::from_secs(86_400) * 2).to_string(),
+            "2d"
+        );
+        assert_eq!(
+            DurationDisplay(Duration::from_millis(500)).to_string(),
+            "500ms"
+        );
+        assert_eq!(DurationDisplay(Duration::from_secs(90)).to_string(), "90s");
     }
 }
