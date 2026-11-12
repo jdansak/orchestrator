@@ -45,7 +45,7 @@ jobs:
           cp target/${{ matrix.target }}/release/orchestrator dist/
           cp target/${{ matrix.target }}/release/orchestrator-manager dist/
           tar -czf dist/orchestrator-${{ matrix.target }}.tar.gz -C dist orchestrator orchestrator-manager
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.target }}
           path: dist/*.tar.gz
@@ -60,7 +60,7 @@ jobs:
       - run: cargo build --workspace --release
       - name: Build the DEB
         run: sudo apt-get update && sudo apt-get install -y dpkg-dev && make -C packaging deb
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: packages
           path: packaging/*.deb
