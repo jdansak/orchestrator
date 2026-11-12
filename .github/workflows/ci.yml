@@ -118,7 +118,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       - run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info --ignore-filename-regex '(tests/|/examples/)'
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v7
         with:
           files: lcov.info
           # Reporting only. The coverage *threshold* is the gate, and it is enforced by the
