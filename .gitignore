@@ -1,0 +1,42 @@
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# Node
+node_modules/
+.pnpm-store/
+dist/
+.vite/
+*.tsbuildinfo
+.vitest/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Coverage
+/tarpaulin-report.html
+/coverage/
+*.profraw
+*.profdata
+lcov.info
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+.DS_Store
+
+# Local state
+*.local
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+/result
+/target/package

@@ -1,0 +1,41 @@
+[Unit]
+Description=Orchestrator Manager
+Documentation=https://github.com/Jdansak/orchestrator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=orchestrator
+Group=orchestrator
+ExecStart=/usr/local/bin/orchestrator-manager \
+    --registry /etc/orchestrator/registry.yaml \
+    --bind 0.0.0.0:8081
+Restart=on-failure
+RestartSec=3
+
+# The manager supervises other services, so it needs to talk to systemd. It does not need
+# anything else.
+StateDirectory=orchestrator
+ConfigurationDirectory=orchestrator
+ReadWritePaths=/etc/orchestrator
+
+# Hardening. The manager manages tenant services and writes their unit files, so it needs
+# to execute systemctl.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=no
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

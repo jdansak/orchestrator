@@ -1,0 +1,39 @@
+[package]
+name = "orchestrator-manager"
+description = "Host-level manager: tenant lifecycle, VIP pool, config watching, and the management API"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+name = "orchestrator_manager"
+path = "src/lib.rs"
+
+[[bin]]
+name = "orchestrator-manager"
+path = "src/main.rs"
+
+[dependencies]
+orchestrator-core = { workspace = true }
+
+clap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
+notify = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

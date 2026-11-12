@@ -1,0 +1,166 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/orchestrator-core",
+    "crates/orchestrator",
+    "crates/orchestrator-manager",
+    "crates/orchestrator-proto",
+    "crates/orchestrator-testkit",
+]
+# The system tests need root and Linux, so they are a separate workspace and are never run
+# by `cargo test --workspace`.
+exclude = ["system-tests"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "Apache-2.0"
+repository = "https://github.com/Jdansak/orchestrator"
+authors = ["Orchestrator contributors"]
+keywords = ["load-balancer", "proxy", "dns", "networking", "traffic-management"]
+categories = ["network-programming", "command-line-utilities"]
+
+[workspace.dependencies]
+# Internal
+orchestrator-core = { path = "crates/orchestrator-core" }
+orchestrator-proto = { path = "crates/orchestrator-proto" }
+orchestrator-testkit = { path = "crates/orchestrator-testkit" }
+
+# Runtime
+tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "signal", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio-stream = { version = "0.1", features = ["net", "sync"] }
+tokio-graceful-shutdown = "0.20"
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml_ng = "0.10"
+serde_json = { version = "1.0", features = ["preserve_order"] }
+
+# Errors
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+metrics = "0.24"
+metrics-exporter-prometheus = "0.18"
+hdrhistogram = "7.6"
+
+# HTTP
+hyper = { version = "1.12", features = ["server", "client", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["server", "client-legacy", "tokio"] }
+http = "1.5"
+http-body-util = "0.1"
+bytes = "1.12"
+tower = { version = "0.5", features = ["util", "timeout", "limit", "load-shed"] }
+tower-http = { version = "0.7", features = ["trace", "cors", "request-id", "catch-panic"] }
+axum = "0.8"
+axum-extra = "0.12"
+matchit = "0.9"
+
+# TLS
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls-pemfile = "2.2"
+rustls-pki-types = "1"
+webpki-roots = "1.0"
+
+# DNS
+hickory-server = "0.26"
+hickory-proto = "0.26"
+hickory-resolver = "0.26"
+
+# Netlink / VIP
+rtnetlink = "0.24"
+nix = { version = "0.31", features = ["signal", "user", "process"] }
+libc = "0.2"
+socket2 = { version = "0.6", features = ["all"] }
+
+# gRPC
+tonic = "0.14"
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
+prost = "0.14"
+prost-types = "0.14"
+
+# State
+arc-swap = "1.9"
+moka = { version = "0.12", features = ["future"] }
+ahash = "0.8"
+dashmap = "6.2"
+parking_lot = "0.13"
+
+# Security
+argon2 = "0.6"
+rand = "0.10"
+base64 = "0.23"
+subtle = "2.6"
+
+# Misc
+clap = { version = "4.6", features = ["derive", "env"] }
+humantime-serde = "1.1"
+notify = "8.2"
+uuid = { version = "1.29", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Dev
+tempfile = "3.27"
+tokio-test = "0.4"
+proptest = "1.12"
+criterion = "0.8"
+rcgen = "0.14"
+wiremock = "0.6"
+serial_test = "3.2"
+protoc-bin-vendored = "3.3"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+# The enforced lint set. `cargo clippy -- -D warnings` turns these into build failures.
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
+
+# Mechanical lints that add noise without adding safety. Each one is disabled here rather
+# than with scattered `#[allow]` attributes, so the policy is visible in one place.
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+# `must_use` is a rustc lint, not a clippy lint; it is set under `[workspace.lints.rust]`.
+return_self_not_must_use = "allow"
+type_complexity = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+doc_markdown = "allow"
+default_trait_access = "allow"
+elidable_lifetime_names = "allow"
+missing_fields_in_debug = "allow"
+duration_subsec = "allow"
+too_many_lines = "allow"
+needless_pass_by_value = "allow"
+struct_excessive_bools = "allow"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[profile.dev]
+opt-level = 0
+debug = 1
+
+[profile.bench]
+inherits = "release"

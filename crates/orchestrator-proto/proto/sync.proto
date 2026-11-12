@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package orchestrator.sync.v1;
+
+// The sync channel between the active and standby workers of a tenant.
+//
+// The active worker pushes state; the standby mirrors it. When the active dies, the standby
+// promotes itself and continues from the last state it received.
+service SyncService {
+  // The standby connects and receives a stream of state updates.
+  rpc StreamUpdates (StreamRequest) returns (stream SyncMessage);
+
+  // The active worker pushes a state update.
+  rpc PushUpdate (SyncMessage) returns (PushAck);
+}
+
+// Identifies which worker is connecting and what it already knows.
+message StreamRequest {
+  // The stable identifier of the connecting worker.
+  string node_id = 1;
+
+  // The sequence number of the last message this worker received. The server resumes from
+  // the next message, so a reconnecting standby does not miss an update.
+  uint64 last_sequence = 2;
+
+  // The role this worker is taking.
+  Role role = 3;
+}
+
+// The role a worker is taking.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_ACTIVE = 1;
+  ROLE_STANDBY = 2;
+}
+
+// A state update. One variant carries the payload; `sequence` is monotonic per peer pair.
+message SyncMessage {
+  // The sequence number of this message. Monotonic and gap-free per peer pair.
+  uint64 sequence = 1;
+
+  // The wall-clock time the message was produced.
+  int64 sent_at_unix_nanos = 2;
+
+  // The payload.
+  oneof payload {
+    RoutingTable routing_table = 3;
+    HealthReport health_report = 4;
+    StickySession sticky_session = 5;
+    UpdateState update_state = 6;
+    Heartbeat heartbeat = 7;
+  }
+}
+
+// A full snapshot of the routing table.
+message RoutingTable {
+  // The routing table, serialised as the tenant's YAML configuration.
+  bytes config_yaml = 1;
+
+  // The configuration schema version the snapshot was taken under.
+  uint32 schema_version = 2;
+}
+
+// The health status of every endpoint.
+message HealthReport {
+  // The health state of each endpoint, keyed by its `region/dc/cluster/endpoint` path.
+  map<string, EndpointHealth> endpoints = 1;
+}
+
+// The health of one endpoint.
+message EndpointHealth {
+  // Whether the endpoint is considered healthy.
+  bool healthy = 1;
+
+  // When the endpoint last changed state.
+  int64 since_unix_nanos = 2;
+
+  // The latency of the most recent probe.
+  int64 last_probe_latency_nanos = 3;
+}
+
+// A sticky-session table update.
+message StickySession {
+  // The session entries. The standby uses them to rebuild its affinity map.
+  map<string, StickySessionEntry> sessions = 1;
+
+  // Entries the standby should drop, because they expired or were reassigned.
+  repeated string removed = 2;
+}
+
+// One sticky-session entry.
+message StickySessionEntry {
+  // The endpoint the session is pinned to.
+  string endpoint_path = 1;
+
+  // When the entry expires.
+  int64 expires_at_unix_nanos = 2;
+}
+
+// The current rolling-update state.
+message UpdateState {
+  // The route the rollout applies to.
+  string route = 1;
+
+  // The rollout state, as a string. See `plan/08-api-reference.md` §4.
+  string state = 2;
+
+  // The index of the current step.
+  uint32 current_step = 3;
+
+  // The percentage of traffic currently sent to green.
+  uint32 green_percent = 4;
+}
+
+// A keepalive.
+message Heartbeat {
+  // The worker's role at the time of the heartbeat.
+  Role role = 1;
+
+  // The worker's node identifier.
+  string node_id = 2;
+}
+
+// The acknowledgement of a pushed update.
+message PushAck {
+  // Whether the peer accepted the update.
+  bool accepted = 1;
+
+  // The sequence number the peer has reached.
+  uint64 sequence = 2;
+}

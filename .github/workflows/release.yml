@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  verify:
+    name: Verify the tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that the tag matches the manifest version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          MANIFEST=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          if [ "$TAG" != "$MANIFEST" ]; then
+            echo "error: the tag is $TAG but the manifest says $MANIFEST" >&2
+            exit 1
+          fi
+
+  build:
+    name: Build the binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --workspace --release --target ${{ matrix.target }}
+      - name: Archive
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/orchestrator dist/
+          cp target/${{ matrix.target }}/release/orchestrator-manager dist/
+          tar -czf dist/orchestrator-${{ matrix.target }}.tar.gz -C dist orchestrator orchestrator-manager
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: dist/*.tar.gz
+
+  package:
+    name: Build the packages
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --workspace --release
+      - name: Build the DEB
+        run: sudo apt-get update && sudo apt-get install -y dpkg-dev && make -C packaging deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: packaging/*.deb
+
+  release:
+    name: Publish the release
+    needs: [verify, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Checksum
+        run: |
+          cd artifacts
+          find . -name '*.tar.gz' -o -name '*.deb' | sort | xargs sha256sum > SHA256SUMS
+      - name: Extract the changelog
+        run: |
+          sed -n '/^## \[/,$p' CHANGELOG.md > NOTES.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          body_path: NOTES.md

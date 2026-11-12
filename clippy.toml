@@ -1,0 +1,12 @@
+# The minimum supported Rust version. Keep in sync with `rust-toolchain.toml` and
+# the `msrv` job in `.github/workflows/ci.yml`.
+msrv = "1.99"
+
+disallowed-methods = [
+    { path = "std::env::set_var", reason = "not thread-safe on Unix" },
+    { path = "std::env::remove_var", reason = "not thread-safe on Unix" },
+    { path = "std::process::exit", reason = "use graceful shutdown instead" },
+]
+
+# `expect_used` / `unwrap_used` are denied in the crate-level lint configuration of
+# the production crates. They remain available in tests.

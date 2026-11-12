@@ -1,0 +1,28 @@
+[package]
+name = "orchestrator-testkit"
+description = "Shared test fixtures for Orchestrator: mock backends, load generation, config builders, and a fake clock"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+orchestrator-core = { workspace = true }
+
+tokio = { version = "1.54", features = ["rt", "rt-multi-thread", "macros", "net", "io-util", "time", "sync"] }
+axum = { workspace = true }
+bytes = { workspace = true }
+http = { workspace = true }
+serde = { workspace = true }
+serde_yaml_ng = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

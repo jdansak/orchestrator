@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+if [ -d /run/systemd/system ]; then
+  systemctl stop orchestrator-manager.service || true
+  systemctl disable orchestrator-manager.service || true
+  systemctl daemon-reload || true
+fi
+
+# The configuration is deliberately kept on purge. Removing it would silently break every
+# tenant the operator has configured.
+if [ "$1" = "purge" ]; then
+  rm -rf /var/lib/orchestrator /var/log/orchestrator
+fi
+
+exit 0

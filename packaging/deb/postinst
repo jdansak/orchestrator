@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+# The orchestrator system user owns the config directory and the runtime state.
+if ! getent group orchestrator >/dev/null; then
+  groupadd --system orchestrator
+fi
+if ! getent passwd orchestrator >/dev/null; then
+  useradd --system --gid orchestrator --no-create-home \
+    --home-dir /var/lib/orchestrator --shell /usr/sbin/nologin orchestrator
+fi
+
+# The config directory holds the registry and the credentials. It must not be world-readable.
+install -d -o orchestrator -g orchestrator -m 0700 /etc/orchestrator
+install -d -o orchestrator -g orchestrator -m 0750 /etc/orchestrator/tenants
+install -d -o orchestrator -g orchestrator -m 0750 /var/lib/orchestrator
+install -d -o orchestrator -g orchestrator -m 0750 /var/log/orchestrator
+
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload || true
+  systemctl enable orchestrator-manager.service || true
+fi
+
+exit 0

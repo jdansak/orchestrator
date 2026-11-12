@@ -1,0 +1,43 @@
+[package]
+name = "orchestrator"
+description = "Per-tenant traffic manager: control plane, data plane, DNS, VIP management, and worker sync"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+orchestrator-core = { workspace = true }
+orchestrator-proto = { workspace = true }
+
+clap = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+bytes = { workspace = true }
+tower = { workspace = true }
+
+arc-swap = { workspace = true }
+dashmap = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+orchestrator-testkit = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

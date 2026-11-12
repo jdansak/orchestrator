@@ -1,0 +1,15 @@
+Package: orchestrator
+Version: 0.1.0
+Section: net
+Priority: optional
+Architecture: amd64
+Maintainer: Orchestrator contributors <maintainers@orchestrator.dev>
+Depends: libc6, libgcc-s1, iproute2
+Description: Application-level traffic manager for Kubernetes clusters and VM pools
+ Orchestrator routes traffic across regions, data centres, clusters, and endpoints with
+ configurable weights. It manages HA worker pairs with Linux kernel VIP failover, handles
+ blue-green and canary rollouts with automatic rollback, serves authoritative DNS for tenant
+ zones, and terminates TLS at the VIP.
+ .
+ Each tenant runs as an isolated systemd service with its own configuration, VIP, listeners,
+ and resource limits.

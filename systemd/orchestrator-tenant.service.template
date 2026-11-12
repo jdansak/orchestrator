@@ -1,0 +1,59 @@
+# Orchestrator — tenant service template.
+#
+# The manager generates a unit from this template, substituting the placeholders below.
+# The values come from the tenant's registry entry, so every tenant on a host gets its own
+# ports and its own paths.
+
+[Unit]
+Description=Orchestrator tenant %TENANT% (%NODE_ID%)
+Documentation=https://github.com/Jdansak/orchestrator
+After=network-online.target
+Wants=network-online.target
+PartOf=orchestrator-%TENANT%.target
+
+[Service]
+Type=simple
+User=orchestrator
+Group=orchestrator
+Environment=ORCHESTRATOR_LOG_LEVEL=%LOG_LEVEL%
+ExecStart=/usr/local/bin/orchestrator \
+    --config %CONFIG% \
+    --node-id %NODE_ID% \
+    --http-bind %HTTP_BIND% \
+    --https-bind %HTTPS_BIND% \
+    --metrics-bind %METRICS_BIND% \
+    --sync-bind %SYNC_BIND% \
+    --dns-bind %DNS_BIND% \
+    --sync-peer %SYNC_PEER%
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=3
+
+# Resource limits. These are what make a tenant isolated from its neighbours on the same
+# host — see G1.3.
+MemoryMax=%MEMORY_MAX%
+CPUQuota=%CPU_QUOTA%
+TasksMax=512
+
+StateDirectory=orchestrator/tenants/%TENANT%
+ReadWritePaths=/var/lib/orchestrator/tenants/%TENANT%
+
+# Hardening. The tenant needs CAP_NET_ADMIN to add and remove its VIP, and nothing else.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+
+[Install]
+WantedBy=multi-user.target

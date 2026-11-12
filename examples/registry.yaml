@@ -1,0 +1,59 @@
+# Orchestrator — example host-level tenant registry
+#
+# Read by orchestrator-manager. The manager validates this file before starting anything, and
+# refuses to start a tenant whose ports conflict with another tenant on the same host.
+#
+# Validate it with:
+#   cargo run -p orchestrator-manager -- --registry examples/registry.yaml --check
+
+version: 1
+
+defaults:
+  interface: eth0
+  resources:
+    memory_max: 512M
+    cpu_quota: 100%
+  tls:
+    cert_dir: /etc/orchestrator/tenants/{tenant}/ssl
+
+tenants:
+  - name: app-frontend
+    enabled: true
+    config: /etc/orchestrator/tenants/app-frontend/tenant.yaml
+    vip: 10.0.0.100/32
+    interface: eth0
+    workers:
+      - node_id: worker-a
+        host: 10.0.2.10
+        ports:
+          http: 18080
+          https: 18443
+          metrics: 19090
+          sync: 19091
+          dns: 15353
+      - node_id: worker-b
+        host: 10.0.2.11
+        ports:
+          http: 18080
+          https: 18443
+          metrics: 19090
+          sync: 19091
+          dns: 15353
+    resources:
+      memory_max: 512M
+      cpu_quota: 100%
+
+  - name: payments
+    enabled: true
+    config: /etc/orchestrator/tenants/payments/tenant.yaml
+    vip: 10.0.0.101/32
+    interface: eth0
+    workers:
+      - node_id: worker-a
+        host: 10.0.2.10
+        ports:
+          http: 18090
+          https: 18453
+          metrics: 19100
+          sync: 19101
+          dns: 15363
