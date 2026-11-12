@@ -90,7 +90,7 @@ jobs:
           cache-dependency-path: orchestrator-gui/package-lock.json
       - run: npm ci --prefix orchestrator-gui --no-audit --no-fund
       - run: npm run lint --prefix orchestrator-gui
-      - run: npx tsc --noEmit --project orchestrator-gui/tsconfig.json
+      - run: npm run typecheck --prefix orchestrator-gui
       - run: npm run test --prefix orchestrator-gui
       - run: npm run build --prefix orchestrator-gui
 
@@ -136,8 +136,12 @@ jobs:
           - aarch64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # The toolchain must match rust-toolchain.toml. The repository's toolchain file
+      # overrides whatever the action installs, so adding the target to a different
+      # toolchain leaves the target's standard library missing.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.99
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - name: Install the cross toolchain
@@ -145,4 +149,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Build
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: cargo build --workspace --release --target ${{ matrix.target }}
